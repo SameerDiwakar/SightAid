@@ -2,175 +2,232 @@ import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 
 const Model = () => {
-    const videoRef = useRef(null);
-    const capturedImageRef = useRef(null); 
-    const queryRef = useRef(""); 
-    const recognitionRef = useRef(null);
-    const isCapturingQueryRef = useRef(false); 
-    const [listening, setListening] = useState(false);
-    let silenceTimeout;
-  
-    const [capturingQuery, setCapturingQuery] = useState(false);
-  
-    useEffect(() => {
-              startTriggerRecognition();
-        startCamera();
+  const videoRef = useRef(null);
+  const capturedImageRef = useRef(null); 
+  const queryRef = useRef(""); 
+  const recognitionRef = useRef(null);
+  const triggerRecognitionRef = useRef(null);
+  const isCapturingQueryRef = useRef(false); 
+  const [listening, setListening] = useState(false);
+  const [isCaptured, setIsCaptured] = useState(false);
+  const triggerListening = useRef(true);
+  let silenceTimeout;
+
+  const [capturingQuery, setCapturingQuery] = useState(false);
+
+  useEffect(() => {
+      startTriggerRecognition();
+      startCamera();
+      setTimeout(() => {
+        
+        
+      }, 500);
+  }, []);
+
+
+
+
+  const startTriggerRecognition = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Speech Recognition not supported in this browser.");
+      return;
+    }
+
+    triggerRecognitionRef.current = new SpeechRecognition();
+    triggerRecognitionRef.current.continuous = true;
+    triggerRecognitionRef.current.lang = "en-US";
+
+    triggerRecognitionRef.current.onresult = (event) => {
+      const transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
+      console.log("🔍 Trigger Word Heard:", transcript);
+
+      if (transcript === "assistant") {
+        speakText("I am listening...");
+        // speakText("Say capture the image to xcapture and query to save them");
         setTimeout(() => {
-          
-          
-        }, 500);
-    }, []);
-  
-  
-  
-  
-    const startTriggerRecognition = () => {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        alert("Speech Recognition not supported in this browser.");
-        return;
+            triggerListening.current=false; 
+            triggerRecognitionRef.current.stop() ;
+            startSpeechRecognition(); // ✅ Start full recognition
+        }, 1000);
       }
+    };
+
+    triggerRecognitionRef.current.onend = () => {
+        console.log("🔄 Trigger recognition ended. Restarting...");
+        if(triggerListening.current==true){
+        triggerRecognitionRef.current.start();
+    }
+      };
+
+      triggerRecognitionRef.current.start();
+    console.log("🎤 Listening for trigger word...");
+  };
+
+
+
+
+
+  const startSpeechRecognition = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Speech Recognition not supported in this browser.");
+      return;
+    }
+
+    recognitionRef.current = new SpeechRecognition();
+    recognitionRef.current.continuous = true;
+    recognitionRef.current.interimResults = false;
+    recognitionRef.current.lang = "en-US";
+
+    recognitionRef.current.onresult = (event) => {
+        const transcript = event.results[event.results.length - 1][0].transcript.trim();
+        console.log("🎙 Recognized:", transcript);
   
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      // recognition.interimResults = true ; 
-      recognition.lang = "en-US";
+        if (transcript === "capture") {
+            queryRef.current = "" ; 
+          captureImage();
+        } else {
+          queryRef.current += transcript + " ";
+          console.log("Current query:", queryRef.current);
   
-      recognition.onresult = (event) => {
-        const transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
-        console.log("🔍 Trigger Word Heard:", transcript);
+          // Clear previous timeout if user is still talking
+          if (silenceTimeout) clearTimeout(silenceTimeout);
   
-        if (transcript === "assistant") {
-          speakText("I am listening...");
-          // speakText("Say capture the image to xcapture and query to save them");
-          startSpeechRecognition(); // ✅ Start full recognition
+          // Detect silence (2s pause) to finalize query
+          silenceTimeout = setTimeout(() => {
+            console.log("⏳ Detected silence. Sending query:", queryRef.current);
+            finalizeAndSend();
+            
+            console.log("started recognising")
+          }, 2000); // 2 seconds silence
         }
       };
+
+      recognitionRef.current.onend = () => {
+        console.log("🔄 Trigger recognition ended. Restarting...");
+        recognitionRef.current.start();
+      };
   
-      recognition.start();
-      console.log("🎤 Listening for trigger word...");
-    };
-  
-  
-  
-  
-  
-    const startSpeechRecognition = () => {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        alert("Speech Recognition not supported in this browser.");
-        return;
-      }
-  
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.lang = "en-US";
-  
-      recognition.onresult = (event) => {
-          const transcript = event.results[event.results.length - 1][0].transcript.trim();
-          console.log("🎙️ Recognized:", transcript);
-    
-          if (transcript === "capture") {
-            captureImage();
-          } else {
-            queryRef.current += transcript + " ";
-            console.log("Current query:", queryRef.current);
-    
-            // Clear previous timeout if user is still talking
-            if (silenceTimeout) clearTimeout(silenceTimeout);
-    
-            // Detect silence (2s pause) to finalize query
-            silenceTimeout = setTimeout(() => {
-              console.log("⏳ Detected silence. Sending query:", queryRef.current);
-              finalizeAndSend();
-            }, 2000); // 2 seconds silence
-          }
-        };
-    
-        recognition.start();
-        recognitionRef.current = recognition;
-        setListening(true);
-        console.log("🎤 Now actively listening for questions...");
-    };
-  
-    const startCamera = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      } catch (error) {
-        console.error("Error accessing camera:", error);
-      }
-    };
-  
-    const captureImage = () => {
-      const canvas = document.createElement("canvas");
-      const video = videoRef.current;
-      if (video) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob((blob) => {
-          console.log("✅ Image captured and stored.");
-          capturedImageRef.current = blob;
-        }, "image/png");
-      }
-    };
-  
-    const finalizeAndSend = () => {
-      console.log("🔎 Checking stored values before sending...");
-      console.log("Stored Image:", capturedImageRef.current);
-      console.log("Stored Query:", queryRef.current);
-  
-      if (!capturedImageRef.current) {
-        speakText("No image found. Please capture an image first.");
-        console.error("❌ Error: No image found.");
-        return;
-      }
-  
-      if (!queryRef.current.trim()) {
-        speakText("No query found. Please say your query first.");
-        console.error("❌ Error: No query found.");
-        return;
-      }
-  
-      sendData(capturedImageRef.current, queryRef.current);
-      queryRef.current = "";
-    };
-  
-    const sendData = async (image, queryText) => {
-      const formData = new FormData();
-      formData.append("file", image, "capture.png");
-      formData.append("query", queryText);
-  
-      try {
-        console.log("🚀 Sending image and query to backend...");
-        const response = await axios.post(import.meta.env.VITE_API_URL, formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-        console.log("✅ Response received:", response.data);
-        speakText(response.data.response);
-      } catch (error) {
-        console.error("❌ Error sending data:", error);
-      }
-    };
-  
-    const speakText = (text) => {
-      console.log("🔊 Speaking:", text);
-      const utterance = new SpeechSynthesisUtterance(text);
-      speechSynthesis.speak(utterance);
-    };
-  
-    return (
-      <div className="container mx-auto p-4 h-1/3 w-1/3">
-        <h1>SightAid</h1>
-        <p>Status: {listening ? "Listening for questions..." : "Waiting for trigger word..."}</p>
-        <video ref={videoRef} autoPlay playsInline style={{ width: "100%" }}></video>
-      </div>
-    );
+      recognitionRef.current.start();
+   
+      setListening(true);
+      console.log("🎤 Now actively listening for questions...");
   };
-  
-  export default Model;
-  
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (error) {
+      console.error("Error accessing camera:", error);
+    }
+  };
+
+  const captureImage = () => {
+    const canvas = document.createElement("canvas");
+    const video = videoRef.current;
+    if (video) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => {
+        console.log("✅ Image captured and stored.");
+        // recognitionRef.current.stop();
+        speakText("captured");
+        // recognitionRef.current.start();
+        setIsCaptured(true) ;
+        capturedImageRef.current = blob;
+      }, "image/png");
+    }
+  };
+
+  const finalizeAndSend = () => {
+    console.log("🔎 Checking stored values before sending...");
+    console.log("Stored Image:", capturedImageRef.current);
+    console.log("Stored Query:", queryRef.current);
+    
+    
+    if (!capturedImageRef.current) {
+      speakText("No image");
+      console.error("❌ Error: No image found.");
+      return;
+    }
+    if (!queryRef.current.trim()) {
+      speakText("No query found. Please say your query first.");
+      console.error("❌ Error: No query found.");
+      return;
+    }
+
+    sendData(capturedImageRef.current, queryRef.current);
+    queryRef.current = "";
+  };
+
+  const sendData = async (image, queryText) => {
+    const formData = new FormData();
+    formData.append("file", image, "capture.png");
+    formData.append("query", queryText);
+
+    try {
+      console.log("🚀 Sending image and query to backend...");
+      const response = await axios.post(import.meta.env.VITE_API_URL, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      console.log("✅ Response received:", response.data);
+
+      speakText(response.data.response);
+    } catch (error) {
+      console.error("❌ Error sending data:", error);
+    }
+  };
+
+  const speakText = (text) => {
+    console.log("🔊 Speaking:", text);
+    const utterance = new SpeechSynthesisUtterance(text);
+    speechSynthesis.speak(utterance);
+  };
+
+
+  return (
+    <div className="flex h-screen gap-4 mt-2">
+      <div className="w-1/4 p-4 bg-gray-100 shadow-lg">
+        <h2 className="text-xl font-semibold">📂 Scan History</h2>
+        <ul className="mt-4 space-y-2">
+          <li className="p-3 bg-white rounded-lg shadow">Medicine Label - Paracetamol</li>
+          <li className="p-3 bg-white rounded-lg shadow">Bill - Grocery Store</li>
+          <li className="p-3 bg-white rounded-lg shadow">Receipt - Pharmacy</li>
+        </ul>
+      </div>
+
+      <div>
+      <h1>Speech Web App</h1>
+      <h4>Trigger Word - Hey Assitant</h4>
+      <h4>To capture Img - Capture</h4>
+      <h5>Then say the queries you want to ask</h5>
+      <p>Status: {listening ? "Listening for questions..." : "Waiting for trigger word..."} {isCaptured? "an image is alredy captured say capture again to capture a new image " :"no image captured " } </p>
+      <video ref={videoRef} autoPlay playsInline style={{ width: "100%" }}></video>
+    </div>
+
+      <div className="w-1/4 p-4 bg-gray-100 shadow-lg">
+        <h2 className="text-xl font-semibold">🤖 AI Insights</h2>
+        <div className="mt-4 p-3 bg-white rounded-lg shadow">
+          <p>Scanned Item: Paracetamol</p>
+          <p>Dosage: 500mg - 1 Tablet every 6 hours</p>
+          <button className="mt-2 p-2 bg-green-500 text-white rounded-md">
+            🔊 Listen to Instructions
+          </button>
+        </div>
+      </div>
+    </div>
+
+  );
+};
+
+{/* <div className="container mx-auto p-4 h-1/3 w-1/3">
+       
+      </div> */}
+
+export default Model;
